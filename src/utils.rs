@@ -1,10 +1,12 @@
 use regex::Regex;
 use ssh2::Session;
+use std::char;
 use std::env;
 use std::io;
 use std::net::TcpStream;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::str;
 
 pub fn validate_source<P: AsRef<Path>>(source: P) -> bool {
     if !source.as_ref().exists() {
@@ -81,6 +83,62 @@ pub fn parse_destination<S: AsRef<str>>(destination: S) -> Option<Destination> {
             Some(Destination::new(username, host))
         }
     }
+}
+
+fn sort_commits<'a>(c1: &'a str, c2: &'a str, repo: &str) -> (&'a str, &'a str) {
+    let status = Command::new("git")
+        .args(&["-C", repo, "merge-base", "--is-ancestor", c1, c2])
+        .status()
+        .unwrap();
+    match status.success() {
+        true => (c1, c2),
+        false => (c2, c1),
+    }
+}
+
+pub fn find_changes_between_commits(c1: &str, c2: &str, repo: &str) -> Vec<String> {
+    let (c1, c2) = sort_commits(c1, c2, repo);
+    let result = Command::new("git")
+        .args(&["-C", repo, "diff", "--name-status", c1, c2])
+        .output();
+    match result {
+        Err(e) => {
+            eprintln!("Error while find changes between commits: {:?}", e);
+            vec![]
+        }
+        Ok(output) => {
+            if output.status.success() {
+                let output = str::from_utf8(&output.stdout).unwrap();
+                output
+                    .lines()
+                    .filter_map(|line| {
+                        let l: Vec<_> = line.split(char::is_whitespace).collect();
+                        match l[0] {
+                            "D" => None,
+                            _ => Some(l[1].to_owned()),
+                        }
+                    })
+                    .collect()
+            } else {
+                eprintln!(
+                    "git command failed, stdout:\n{}stderr:\n{}",
+                    str::from_utf8(&output.stdout).unwrap(),
+                    str::from_utf8(&output.stderr).unwrap(),
+                );
+                vec![]
+            }
+        }
+    }
+}
+
+#[test]
+fn test_find_changes_between_commits() {
+    let result = find_changes_between_commits(
+        "15cfed3f",
+        "764c3656",
+        "/Users/howard/Workspaces/Rust/gsync",
+    );
+    assert_eq!(vec!["LICENSE"], result);
 }
 
 fn is_git_repo<P: AsRef<Path>>(path: P) -> io::Result<bool> {

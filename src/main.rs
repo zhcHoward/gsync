@@ -1,14 +1,16 @@
-use structopt::StructOpt;
+use serde_json;
+use ssh2;
+use std::fs;
 use std::path::PathBuf;
 use std::process::exit;
-use ssh2;
+use structopt::StructOpt;
 
 mod utils;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "gsync", about = "A tool to sync file from a repository")]
+#[structopt(name = "gsync", about = "A tool to sync file from a git repository")]
 struct Opt {
-    #[structopt(short, long, required=true)]
+    #[structopt(short, long, required = true)]
     config: PathBuf,
     #[structopt()]
     source: PathBuf,
@@ -34,8 +36,19 @@ fn main() {
         Err(e) => {
             eprintln!("Error while connecting remote machine: {:?}", e);
             exit(1);
-        },
+        }
         Ok(session) => ssh = session,
     }
     println!("session authenticated: {:?}", ssh.authenticated());
+
+    let config_file = opts.config.as_path();
+    if !config_file.exists() {
+        eprintln!(
+            "Config file {} does not exist",
+            config_file.to_string_lossy()
+        )
+    }
+    let contents = fs::read_to_string(config_file).unwrap();
+    let rules: serde_json::Value = serde_json::from_str(&contents).unwrap();
+    println!("rules: {:?}", rules);
 }
