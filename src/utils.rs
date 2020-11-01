@@ -2,6 +2,7 @@ use regex::Regex;
 use serde_json;
 use ssh2::Session;
 use std::char;
+use std::collections::HashSet;
 use std::env;
 use std::ffi::OsStr;
 use std::io;
@@ -65,24 +66,23 @@ impl Destination {
         session.set_tcp_stream(stream);
         session.handshake()?;
 
-        // Try to authenticate with the first identity in the agent.
-        match session.userauth_agent(self.username.as_str()) {
-            Ok(_) => Ok(session),
-            Err(e) => {
-                println!("userauth_agent failed: {:?}", e);
-            }
+        let result = session.userauth_agent(self.username.as_str());
+        if let Ok(_) = result {
+            return Ok(session);
         };
 
-        match session.userauth_pubkey_file(
+        println!("userauth_agent failed: {:?}", result);
+        let result = session.userauth_pubkey_file(
             self.username.as_str(),
             Some(self.public_key_file.as_path()),
             self.private_key_file.as_path(),
             None,
-        ) {
-            Ok(_) => Ok(session),
-            Err(e) => println!("userauth pubkey file failed: {:?}", e),
+        );
+        if let Ok(_) = result {
+            return Ok(session);
         };
 
+        println!("userauth pubkey file failed: {:?}", result);
         let message = format!("{}@{}'s password: ", self.username, self.host);
         let pass = rpassword::read_password_from_tty(Some(message.as_str())).unwrap();
         match session.userauth_password(self.username.as_str(), pass.as_str()) {
@@ -92,7 +92,6 @@ impl Destination {
                 Err(io::Error::new(io::ErrorKind::Other, "Invalid password"))
             }
         }
-
     }
 }
 
@@ -127,51 +126,73 @@ fn sort_commits<'a, P: AsRef<Path>>(c1: &'a str, c2: &'a str, repo: P) -> (&'a s
     }
 }
 
-pub fn find_changes_between_commits<P: AsRef<Path>>(c1: &str, c2: &str, repo: P) -> Vec<String> {
-    let (c1, c2) = sort_commits(c1, c2, &repo);
-    let result = Command::new("git")
-        .arg("-C")
-        .arg(repo.as_ref())
-        .args(&["diff", "--name-status", c1, c2])
-        .output();
-    match result {
-        Err(e) => {
-            eprintln!("Error while find changes between commits: {:?}", e);
-            vec![]
+fn parse_commit<P: AsRef<Path>>(raw_commit: &str, repo: P) -> Vec<String> {
+    let commits: Vec<&str> = raw_commit.split("..").collect();
+    match commits.len() {
+        1 => commits.iter().map(|c| c.to_string()).collect(),
+        2 => {
+            let output = Command::new("git")
+                .arg("-C")
+                .arg(repo.as_ref())
+                .args(&["rev-list", commits[0], "..", commits[1]])
+                .output()
+                .unwrap();
+            str::from_utf8(&output.stdout)
+                .unwrap()
+                .lines()
+                .map(|line| line.to_string())
+                .collect()
         }
-        Ok(output) => {
-            if output.status.success() {
-                let output = str::from_utf8(&output.stdout).unwrap();
-                output
-                    .lines()
-                    .filter_map(|line| {
-                        let l: Vec<_> = line.split(char::is_whitespace).collect();
-                        match l[0] {
-                            "D" => None,
-                            _ => Some(l[1].to_owned()),
-                        }
-                    })
-                    .collect()
-            } else {
-                eprintln!(
-                    "git command failed, stdout:\n{}stderr:\n{}",
-                    str::from_utf8(&output.stdout).unwrap(),
-                    str::from_utf8(&output.stderr).unwrap(),
-                );
-                vec![]
-            }
+        _ => {
+            eprintln!("Commit format is invalid, {}", raw_commit);
+            vec![]
         }
     }
 }
 
-#[test]
-fn test_find_changes_between_commits() {
-    let result = find_changes_between_commits(
-        "15cfed3f",
-        "764c3656",
-        "/Users/howard/Workspaces/Rust/gsync",
-    );
-    assert_eq!(vec!["LICENSE"], result);
+pub fn find_changes<P: AsRef<Path>>(raw_commit: &str, repo: P) -> HashSet<String> {
+    let commits = parse_commit(raw_commit, &repo);
+    let mut changes: HashSet<String> = HashSet::new();
+    for commit in commits {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(repo.as_ref())
+            .args(&["show", "--name-status", "--pretty=tformat:", &commit])
+            .output();
+        let files = match output {
+            Err(e) => {
+                eprintln!("Error while find changes between commits: {:?}", e);
+                vec![]
+            }
+            Ok(output) => {
+                if output.status.success() {
+                    println!("output: {}", str::from_utf8(&output.stdout).unwrap());
+                    str::from_utf8(&output.stdout)
+                        .unwrap()
+                        .lines()
+                        .filter_map(|line| {
+                            println!("line: {}", line);
+                            let l: Vec<_> = line.split(char::is_whitespace).collect();
+                            println!("line split: {:?}", l);
+                            match l[0] {
+                                "D" => None,
+                                _ => Some(l[1].to_owned()),
+                            }
+                        })
+                        .collect()
+                } else {
+                    eprintln!(
+                        "git show failed, stdout:\n{}stderr:\n{}",
+                        str::from_utf8(&output.stdout).unwrap(),
+                        str::from_utf8(&output.stderr).unwrap(),
+                    );
+                    vec![]
+                }
+            }
+        };
+        changes.extend(files);
+    }
+    changes
 }
 
 // fn find_remote_path<P: AsRef<Path>>(local_path: P, config: &serde_json::Value) -> PathBuf {}
