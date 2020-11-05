@@ -129,12 +129,16 @@ fn sort_commits<'a, P: AsRef<Path>>(c1: &'a str, c2: &'a str, repo: P) -> (&'a s
 fn parse_commit<P: AsRef<Path>>(raw_commit: &str, repo: P) -> Vec<String> {
     let commits: Vec<&str> = raw_commit.split("..").collect();
     match commits.len() {
-        1 => commits.iter().map(|c| c.to_string()).collect(),
+        1 => vec![raw_commit.to_owned()],
         2 => {
+            if commits[0] == "" && commits[1] == "" {
+                return vec![];
+            }
+
             let output = Command::new("git")
                 .arg("-C")
                 .arg(repo.as_ref())
-                .args(&["rev-list", commits[0], "..", commits[1]])
+                .args(&["rev-list", raw_commit])
                 .output()
                 .unwrap();
             str::from_utf8(&output.stdout)
@@ -166,14 +170,14 @@ pub fn find_changes<P: AsRef<Path>>(raw_commit: &str, repo: P) -> HashSet<String
             }
             Ok(output) => {
                 if output.status.success() {
-                    println!("output: {}", str::from_utf8(&output.stdout).unwrap());
+                    // println!("output: {}", str::from_utf8(&output.stdout).unwrap());
                     str::from_utf8(&output.stdout)
                         .unwrap()
                         .lines()
                         .filter_map(|line| {
-                            println!("line: {}", line);
+                            // println!("line: {}", line);
                             let l: Vec<_> = line.split(char::is_whitespace).collect();
-                            println!("line split: {:?}", l);
+                            // println!("line split: {:?}", l);
                             match l[0] {
                                 "D" => None,
                                 _ => Some(l[1].to_owned()),

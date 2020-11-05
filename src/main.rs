@@ -9,6 +9,7 @@ use std::str;
 use structopt::StructOpt;
 
 mod utils;
+mod config;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "gsync", about = "A tool to sync file from a git repository")]
@@ -57,7 +58,7 @@ fn main() {
         )
     }
     let contents = fs::read_to_string(config_file).unwrap();
-    let rules: serde_json::Value = serde_json::from_str(&contents).unwrap();
+    let rules: config::Config = serde_json::from_str(&contents).unwrap();
     println!("rules: {:?}", rules);
 
     // find changes
