@@ -71,7 +71,7 @@ impl Destination {
             return Ok(session);
         };
 
-        println!("userauth_agent failed: {:?}", result);
+        // println!("userauth_agent failed: {:?}", result);
         let result = session.userauth_pubkey_file(
             self.username.as_str(),
             Some(self.public_key_file.as_path()),
