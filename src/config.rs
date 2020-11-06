@@ -1,12 +1,33 @@
+use crate::error::{ErrorKind, GsyncError};
 use regex::Regex;
 use serde::{Deserialize, Deserializer};
-use std::path::PathBuf;
+use serde_json;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
     #[serde(deserialize_with = "from_list")]
     pub dir_map: Vec<(Regex, PathBuf)>,
     pub ignored: Vec<String>,
+}
+
+impl Config {
+    pub fn parse_config<P: AsRef<Path>>(path: P) -> Result<Self, GsyncError> {
+        match path.as_ref().exists() {
+            true => {
+                let contents = fs::read_to_string(path.as_ref()).unwrap();
+                Ok(serde_json::from_str(&contents).unwrap())
+            }
+            false => {
+                eprintln!(
+                    "Config file {} does not exist",
+                    path.as_ref().to_string_lossy()
+                );
+                Err(GsyncError::Custom(ErrorKind::ConfigNotExist))
+            }
+        }
+    }
 }
 
 fn from_list<'de, D>(deserializer: D) -> Result<Vec<(Regex, PathBuf)>, D::Error>

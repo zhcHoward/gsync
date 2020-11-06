@@ -1,18 +1,21 @@
 use serde_json;
 use ssh2;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs;
-use std::{io, io::{Read, Write}};
 use std::os::unix::fs::PermissionsExt;
-use std::panic;
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 use std::process::exit;
-use std::process::Command;
-use std::str;
+use std::{
+    io,
+    io::{Read, Write},
+};
 use structopt::StructOpt;
 
+mod commit;
 mod config;
-mod utils;
+mod destination;
+mod error;
+mod gsync;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "gsync", about = "A tool to sync file from a git repository")]
