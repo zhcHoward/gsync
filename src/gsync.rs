@@ -1,19 +1,24 @@
 use crate::{
-    commit,
+    commit::Commits,
     config::Config,
     destination::Destination,
     error::{ErrorKind, GsyncError},
     Opt,
 };
-use std::io;
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::{
+    io,
+    io::{Read, Write},
+};
 
-struct Gsync {
-    config: PathBuf,
+pub struct Gsync {
+    config: Config,
     source: PathBuf,
     destination: Destination,
-    commits: Vec<String>,
+    commits: Commits,
 }
 
 impl Gsync {
@@ -24,11 +29,100 @@ impl Gsync {
         }
         let destination = Destination::parse_destination(&opts.destination)?;
         let config = Config::parse_config(&opts.config)?;
-        let commits = &opts
-            .commits
-            .iter()
-            .map(|raw_commit| commit::parse_commit(raw_commit, &opts.source));
-        unimplemented!();
+        let commits = Commits::new(opts.commits, &opts.source);
+        Ok(Gsync {
+            source: opts.source,
+            destination,
+            commits: commits,
+            config,
+        })
+    }
+
+    pub fn start(&self) {
+        let file2sync = self.commits.changes();
+        let mut matched = Vec::new();
+        let mut not_matched = Vec::new();
+        let mut is_matched: bool;
+        for fpath in file2sync.iter() {
+            is_matched = false;
+            for (s, d) in self.config.dir_map.iter() {
+                if s.is_match(fpath) {
+                    let full_source_path = self.source.join(fpath);
+                    let relative_dest_path = Path::new(fpath).strip_prefix(s.as_str()).unwrap();
+                    let full_dest_path = d.join(relative_dest_path);
+                    matched.push((full_source_path, full_dest_path));
+                    is_matched = true;
+                    break;
+                }
+            }
+            if !is_matched {
+                not_matched.push(fpath);
+            }
+        }
+
+        println!("Following files will be updated:");
+        let offset = matched.len().to_string().len();
+        for (idx, (source, dest)) in matched.iter().enumerate() {
+            println!("{0:>3$}. {1:?} --> {2:?}", idx + 1, source, dest, offset);
+        }
+        if !not_matched.is_empty() {
+            println!("Following files has no configured remote dir:");
+            for p in not_matched {
+                println!("{:?}", p);
+            }
+        }
+
+        println!("Update remote files? ('y' or 'n' or 'line number of files you want to update')");
+        let choices: Vec<usize>;
+        let mut decision = String::new();
+        io::stdin().read_line(&mut decision).unwrap();
+        match decision.as_str().trim() {
+            "y" | "Y" => choices = matched.iter().enumerate().map(|m| m.0).collect(),
+            "n" | "N" => {
+                println!("Update cancelled");
+                return;
+            }
+            _ => {
+                let result: Result<Vec<usize>, _> =
+                    decision.split(" ").map(|d| d.parse()).collect();
+                if result.is_ok() {
+                    choices = result.unwrap();
+                } else {
+                    println!("Invalid line numbers");
+                    return;
+                }
+            }
+        }
+
+        let mut buffer = [0; 1024];
+        let mut size: usize;
+        let ssh: ssh2::Session;
+        match self.destination.connect() {
+            Err(_) => {
+                eprintln!("Error while connecting remote machine");
+                return;
+            }
+            Ok(session) => ssh = session,
+        };
+
+        for choice in choices {
+            let (src, dst) = &matched[choice];
+            let mut file = fs::File::open(src).unwrap();
+            let metadata = file.metadata().unwrap();
+            let mut remote = ssh
+                .scp_send(
+                    dst,
+                    (metadata.permissions().mode() & 0o777) as i32,
+                    metadata.len(),
+                    None,
+                )
+                .unwrap();
+            size = file.read(&mut buffer).unwrap();
+            while size > 0 {
+                remote.write(&buffer[..size]).unwrap();
+                size = file.read(&mut buffer).unwrap();
+            }
+        }
     }
 }
 

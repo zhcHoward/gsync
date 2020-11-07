@@ -1,9 +1,33 @@
 use std::char;
 use std::collections::HashSet;
-use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str;
+
+pub struct Commits {
+    raw_commits: Vec<String>,
+    repo: PathBuf,
+}
+
+impl Commits {
+    pub fn new<P: AsRef<Path>>(raw_commits: Vec<String>, repo: P) -> Self {
+        Commits {
+            raw_commits,
+            repo: repo.as_ref().to_path_buf(),
+        }
+    }
+
+    pub fn changes(&self) -> Vec<String> {
+        self.raw_commits
+            .iter()
+            .map(|raw_commit| find_changes(raw_commit, &self.repo))
+            .fold(HashSet::new(), |acc, changes| {
+                acc.union(&changes).map(|c| c.to_owned()).collect()
+            })
+            .into_iter()
+            .collect()
+    }
+}
 
 pub fn parse_commit<P: AsRef<Path>>(raw_commit: &str, repo: P) -> Vec<String> {
     let commits: Vec<&str> = raw_commit.split("..").collect();
