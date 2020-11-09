@@ -29,11 +29,14 @@ impl Gsync {
         }
         let destination = Destination::parse_destination(&opts.destination)?;
         let config = Config::parse_config(&opts.config)?;
-        let commits = Commits::new(opts.commits, &opts.source);
+        let commits = match opts.commits.len() {
+            0 => Commits::new(vec!["HEAD".to_string()], &opts.source),
+            _ => Commits::new(opts.commits, &opts.source),
+        };
         Ok(Gsync {
             source: opts.source,
             destination,
-            commits: commits,
+            commits,
             config,
         })
     }
@@ -82,11 +85,12 @@ impl Gsync {
                 println!("Update cancelled");
                 return;
             }
-            _ => {
+            decision => {
                 let result: Result<Vec<usize>, _> =
                     decision.split(" ").map(|d| d.parse()).collect();
+                println!("{:?}", result);
                 if result.is_ok() {
-                    choices = result.unwrap();
+                    choices = result.unwrap().iter().map(|c| c - 1).collect();
                 } else {
                     println!("Invalid line numbers");
                     return;
