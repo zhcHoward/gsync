@@ -1,3 +1,4 @@
+use log::{debug, LevelFilter};
 use std::path::PathBuf;
 use std::process::exit;
 use structopt::StructOpt;
@@ -7,6 +8,7 @@ mod config;
 mod destination;
 mod error;
 mod gsync;
+mod logger;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "gsync", about = "A tool to sync file from a git repository")]
@@ -17,13 +19,22 @@ pub struct Opt {
     source: PathBuf,
     #[structopt(short, long, required = true)]
     destination: String,
+    #[structopt(short, parse(from_occurrences))]
+    verbose: u8,
     #[structopt()]
     commits: Vec<String>,
 }
 
 fn main() {
     let opts = Opt::from_args();
-    // println!("{:?}", opts);
+    let log_level = match opts.verbose {
+        1 => LevelFilter::Info,
+        2 => LevelFilter::Debug,
+        3 => LevelFilter::Trace,
+        _ => LevelFilter::Off,
+    };
+    logger::init(log_level);
+    debug!("Command line options: {:?}", opts);
 
     match gsync::Gsync::from_options(opts) {
         Err(_) => exit(1),
