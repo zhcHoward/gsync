@@ -1,10 +1,11 @@
 use crate::{
-    commit::Commits,
+    commit,
     config::Config,
     destination::Destination,
     error::{ErrorKind, GsyncError},
     Opt,
 };
+use std::collections::HashSet;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -18,7 +19,7 @@ pub struct Gsync {
     config: Config,
     source: PathBuf,
     destination: Destination,
-    commits: Commits,
+    commits: Vec<String>,
 }
 
 impl Gsync {
@@ -29,10 +30,7 @@ impl Gsync {
         }
         let destination = Destination::parse_destination(&opts.destination)?;
         let config = Config::parse_config(&opts.config)?;
-        let commits = match opts.commits.len() {
-            0 => Commits::new(vec!["HEAD".to_string()], &opts.source),
-            _ => Commits::new(opts.commits, &opts.source),
-        };
+        let commits = opts.commits;
         Ok(Gsync {
             source: opts.source,
             destination,
@@ -42,7 +40,15 @@ impl Gsync {
     }
 
     pub fn start(&self) {
-        let file2sync = self.commits.changes();
+        let file2sync: Vec<_> = self
+            .commits
+            .iter()
+            .map(|raw_commit| commit::find_changes(raw_commit, &self.source))
+            .fold(HashSet::new(), |acc, changes| {
+                acc.union(&changes).map(|c| c.to_owned()).collect()
+            })
+            .into_iter()
+            .collect();
         let mut matched = Vec::new();
         let mut not_matched = Vec::new();
         let mut is_matched: bool;

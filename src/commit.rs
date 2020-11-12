@@ -1,33 +1,12 @@
 use log::error;
 use std::char;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::io::{Error, ErrorKind};
+use std::path::Path;
 use std::process::Command;
 use std::str;
 
-pub struct Commits {
-    raw_commits: Vec<String>,
-    repo: PathBuf,
-}
-
-impl Commits {
-    pub fn new(raw_commits: Vec<String>, repo: PathBuf) -> Self {
-        Commits { raw_commits, repo }
-    }
-
-    pub fn changes(&self) -> Vec<String> {
-        self.raw_commits
-            .iter()
-            .map(|raw_commit| find_changes(raw_commit, &self.repo))
-            .fold(HashSet::new(), |acc, changes| {
-                acc.union(&changes).map(|c| c.to_owned()).collect()
-            })
-            .into_iter()
-            .collect()
-    }
-}
-
-pub fn parse_commit<'a, P: AsRef<Path>>(raw_commit: &'a str, repo: P) -> (&'a str, &'a str) {
+pub fn parse_commit<'a, P: AsRef<Path>>(raw_commit: &'a str, repo: P) -> Vec<&'a str> {
     let commits: Vec<&str> = raw_commit.split("..").collect();
     match commits.len() {
         1 => vec![raw_commit],
@@ -69,21 +48,33 @@ pub fn sort_commits<'a, P: AsRef<Path>>(c1: &'a str, c2: &'a str, repo: P) -> (&
 
 pub fn find_changes<P: AsRef<Path>>(raw_commit: &str, repo: P) -> HashSet<String> {
     let commits = parse_commit(raw_commit, &repo);
-    let mut changes: HashSet<String> = HashSet::new();
-    for commit in commits {
-        let output = Command::new("git")
+    let output = match commits.len() {
+        1 => Command::new("git")
             .arg("-C")
             .arg(repo.as_ref())
-            .args(&["show", "--name-status", "--pretty=tformat:", &commit])
-            .output();
-        let files = match output {
-            Err(e) => {
-                eprintln!("Error while find changes between commits: {:?}", e);
-                vec![]
-            }
-            Ok(output) => {
-                if output.status.success() {
-                    // println!("output: {}", str::from_utf8(&output.stdout).unwrap());
+            .arg("diff")
+            .arg("--name-status")
+            .arg(format!("{}~", commits[0]))
+            .arg(commits[0])
+            .output(),
+        2 => Command::new("git")
+            .arg("-C")
+            .arg(repo.as_ref())
+            .arg("diff")
+            .arg("--name-status")
+            .arg(commits[0])
+            .arg(commits[1])
+            .output(),
+        _ => Err(Error::from(ErrorKind::NotFound)),
+    };
+    match output {
+        Err(e) => {
+            eprintln!("Error while find changes between commits: {:?}", e);
+            HashSet::new()
+        }
+        Ok(output) => {
+            match output.status.success() {
+                true => {
                     str::from_utf8(&output.stdout)
                         .unwrap()
                         .lines()
@@ -97,17 +88,16 @@ pub fn find_changes<P: AsRef<Path>>(raw_commit: &str, repo: P) -> HashSet<String
                             }
                         })
                         .collect()
-                } else {
+                }
+                false => {
                     eprintln!(
                         "git show failed, stdout:\n{}stderr:\n{}",
                         str::from_utf8(&output.stdout).unwrap(),
                         str::from_utf8(&output.stderr).unwrap(),
                     );
-                    vec![]
+                    HashSet::new()
                 }
             }
-        };
-        changes.extend(files);
+        }
     }
-    changes
 }
