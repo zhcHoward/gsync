@@ -1,3 +1,4 @@
+use log::error;
 use std::char;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -10,11 +11,8 @@ pub struct Commits {
 }
 
 impl Commits {
-    pub fn new<P: AsRef<Path>>(raw_commits: Vec<String>, repo: P) -> Self {
-        Commits {
-            raw_commits,
-            repo: repo.as_ref().to_path_buf(),
-        }
+    pub fn new(raw_commits: Vec<String>, repo: PathBuf) -> Self {
+        Commits { raw_commits, repo }
     }
 
     pub fn changes(&self) -> Vec<String> {
@@ -29,31 +27,43 @@ impl Commits {
     }
 }
 
-pub fn parse_commit<P: AsRef<Path>>(raw_commit: &str, repo: P) -> Vec<String> {
+pub fn parse_commit<'a, P: AsRef<Path>>(raw_commit: &'a str, repo: P) -> (&'a str, &'a str) {
     let commits: Vec<&str> = raw_commit.split("..").collect();
     match commits.len() {
-        1 => vec![raw_commit.to_owned()],
+        1 => vec![raw_commit],
         2 => {
             if commits[0] == "" && commits[1] == "" {
                 return vec![];
             }
 
-            let output = Command::new("git")
-                .arg("-C")
-                .arg(repo.as_ref())
-                .args(&["rev-list", raw_commit])
-                .output()
-                .unwrap();
-            str::from_utf8(&output.stdout)
-                .unwrap()
-                .lines()
-                .map(|line| line.to_string())
-                .collect()
+            let (c1, c2) = sort_commits(commits[0], commits[1], repo);
+            vec![c1, c2]
         }
         _ => {
             eprintln!("Commit format is invalid, {}", raw_commit);
             vec![]
         }
+    }
+}
+
+pub fn sort_commits<'a, P: AsRef<Path>>(c1: &'a str, c2: &'a str, repo: P) -> (&'a str, &'a str) {
+    match Command::new("git")
+        .arg("-C")
+        .arg(repo.as_ref())
+        .arg("merge-base")
+        .arg("--is-ancestor")
+        .arg(c1)
+        .arg(c2)
+        .status()
+    {
+        Err(e) => {
+            error!("git merge-base failed: {:?}", e);
+            (c1, c2)
+        }
+        Ok(exit_status) => match exit_status.success() {
+            true => (c1, c2),
+            false => (c2, c1),
+        },
     }
 }
 
