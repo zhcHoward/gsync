@@ -16,15 +16,16 @@ impl Config {
     pub fn parse_config<P: AsRef<Path>>(path: P) -> Result<Self, GsyncError> {
         match path.as_ref().exists() {
             true => {
-                let contents = fs::read_to_string(path.as_ref()).unwrap();
-                Ok(serde_json::from_str(&contents).unwrap())
+                let contents = fs::read_to_string(path.as_ref())?;
+                let config = serde_json::from_str(&contents)?;
+                Ok(config)
             }
             false => {
                 eprintln!(
                     "Config file {} does not exist",
                     path.as_ref().to_string_lossy()
                 );
-                Err(GsyncError::Custom(ErrorKind::ConfigNotExist))
+                Err(ErrorKind::ConfigNotExist.error())
             }
         }
     }

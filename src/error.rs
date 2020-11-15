@@ -1,3 +1,4 @@
+use serde_json;
 use std::convert::From;
 use std::error;
 use std::fmt;
@@ -7,6 +8,17 @@ use std::io;
 pub enum GsyncError {
     Io(io::Error),
     Custom(ErrorKind),
+    Serde(serde_json::Error),
+}
+
+impl GsyncError {
+    pub fn custom(kind: ErrorKind) -> Self {
+        GsyncError::Custom(kind)
+    }
+
+    pub fn io(error: io::Error) -> Self {
+        GsyncError::Io(error)
+    }
 }
 
 impl fmt::Display for GsyncError {
@@ -14,6 +26,7 @@ impl fmt::Display for GsyncError {
         match *self {
             GsyncError::Io(ref err) => write!(f, "IO error: {}", err),
             GsyncError::Custom(ref err) => write!(f, "{}", err.as_str()),
+            GsyncError::Serde(ref err) => err.fmt(f),
         }
     }
 }
@@ -22,6 +35,7 @@ impl error::Error for GsyncError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             GsyncError::Io(ref err) => Some(err),
+            GsyncError::Serde(ref err) => Some(err),
             GsyncError::Custom(..) => None,
         }
     }
@@ -36,6 +50,12 @@ impl From<io::Error> for GsyncError {
 impl From<ErrorKind> for GsyncError {
     fn from(kind: ErrorKind) -> Self {
         GsyncError::Custom(kind)
+    }
+}
+
+impl From<serde_json::Error> for GsyncError {
+    fn from(error: serde_json::Error) -> Self {
+        GsyncError::Serde(error)
     }
 }
 
@@ -55,5 +75,9 @@ impl ErrorKind {
             }
             ErrorKind::ConfigNotExist => "Config file does not exist",
         }
+    }
+
+    pub fn error(self) -> GsyncError {
+        GsyncError::custom(self)
     }
 }
