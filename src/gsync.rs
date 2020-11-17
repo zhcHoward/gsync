@@ -72,7 +72,13 @@ impl Gsync {
         println!("Following files will be updated:");
         let offset = matched.len().to_string().len();
         for (idx, (source, dest)) in matched.iter().enumerate() {
-            println!("{0:>3$}. {1:?} --> {2:?}", idx + 1, source, dest, offset);
+            println!(
+                "{0:>3$}. {1} --> {2}",
+                idx + 1,
+                source.to_string_lossy(),
+                dest.to_string_lossy(),
+                offset
+            );
         }
         if !not_matched.is_empty() {
             println!("Following files has no configured remote dir:");
