@@ -26,7 +26,7 @@ impl Gsync {
     pub fn from_options(opts: Opt) -> Result<Self, GsyncError> {
         let valid = validate_source(&opts.source)?;
         if !valid {
-            return Err(GsyncError::Custom(ErrorKind::SourceNotExist));
+            return Err(ErrorKind::SourceNotExist.error());
         }
         let destination = Destination::parse_destination(&opts.destination)?;
         let config = Config::parse_config(&opts.config)?;
