@@ -13,6 +13,7 @@ use std::process::{Command, Stdio};
 use std::{
     io,
     io::{Read, Write},
+    str,
 };
 
 pub struct Gsync {
@@ -40,15 +41,7 @@ impl Gsync {
     }
 
     pub fn start(&self) {
-        let file2sync: Vec<_> = self
-            .commits
-            .iter()
-            .map(|raw_commit| commit::find_changes(raw_commit, &self.source))
-            .fold(HashSet::new(), |acc, changes| {
-                acc.union(&changes).map(|c| c.to_owned()).collect()
-            })
-            .into_iter()
-            .collect();
+        let file2sync = find_changes(&self.commits, &self.source);
         let mut matched = Vec::new();
         let mut not_matched = Vec::new();
         let mut is_matched: bool;
@@ -177,6 +170,30 @@ fn is_git_repo<P: AsRef<Path>>(path: P) -> io::Result<bool> {
         .stderr(Stdio::null())
         .status()
         .map(|status| status.success())
+}
+
+fn find_changes<P: AsRef<Path>>(commits: &Vec<String>, repo: P) -> HashSet<String> {
+    match commits.len() {
+        0 => {
+            let output = Command::new("git")
+                .arg("-C")
+                .arg(repo.as_ref())
+                .arg("diff")
+                .arg("--name-status")
+                .output();
+            let bytes = output.unwrap().stdout;
+            let changes = str::from_utf8(&bytes).unwrap();
+            commit::parse_changes(&changes)
+        }
+        _ => commits
+            .iter()
+            .map(|raw_commit| commit::find_changes(raw_commit, repo.as_ref()))
+            .fold(HashSet::new(), |acc, changes| {
+                acc.union(&changes).map(|c| c.to_owned()).collect()
+            })
+            .into_iter()
+            .collect(),
+    }
 }
 
 #[test]

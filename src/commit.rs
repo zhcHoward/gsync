@@ -75,19 +75,8 @@ pub fn find_changes<P: AsRef<Path>>(raw_commit: &str, repo: P) -> HashSet<String
         Ok(output) => {
             match output.status.success() {
                 true => {
-                    str::from_utf8(&output.stdout)
-                        .unwrap()
-                        .lines()
-                        .filter_map(|line| {
-                            // println!("line: {}", line);
-                            let l: Vec<_> = line.split(char::is_whitespace).collect();
-                            // println!("line split: {:?}", l);
-                            match l[0] {
-                                "D" => None,
-                                _ => Some(l[1].to_owned()),
-                            }
-                        })
-                        .collect()
+                    let changes = str::from_utf8(&output.stdout).unwrap();
+                    parse_changes(&changes)
                 }
                 false => {
                     eprintln!(
@@ -101,3 +90,17 @@ pub fn find_changes<P: AsRef<Path>>(raw_commit: &str, repo: P) -> HashSet<String
         }
     }
 }
+
+pub fn parse_changes(raw_changes: &str) -> HashSet<String> {
+    raw_changes
+        .lines()
+        .filter_map(|line| {
+            let l: Vec<_> = line.split(char::is_whitespace).collect();
+            match l[0] {
+                "D" => None,
+                _ => Some(l[1].to_owned()),
+            }
+        })
+        .collect()
+}
+
