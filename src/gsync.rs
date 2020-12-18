@@ -40,8 +40,32 @@ impl Gsync {
         })
     }
 
+    fn find_changes(&self) -> HashSet<String> {
+        match self.commits.len() {
+            0 => {
+                let output = Command::new("git")
+                    .arg("-C")
+                    .arg(&self.source)
+                    .arg("diff")
+                    .arg("--name-status")
+                    .output();
+                let bytes = output.unwrap().stdout;
+                let changes = str::from_utf8(&bytes).unwrap();
+                commit::parse_changes(&changes)
+            }
+            _ => self
+                .commits
+                .iter()
+                .map(|raw_commit| commit::find_changes(raw_commit, &self.source))
+                .fold(HashSet::new(), |mut acc, changes| {
+                    acc.extend(changes);
+                    acc
+                }),
+        }
+    }
+
     pub fn start(&self) {
-        let file2sync = find_changes(&self.commits, &self.source);
+        let file2sync = self.find_changes();
         let mut matched = Vec::new();
         let mut not_matched = Vec::new();
         let mut is_matched: bool;
@@ -170,30 +194,6 @@ fn is_git_repo<P: AsRef<Path>>(path: P) -> io::Result<bool> {
         .stderr(Stdio::null())
         .status()
         .map(|status| status.success())
-}
-
-fn find_changes<P: AsRef<Path>>(commits: &Vec<String>, repo: P) -> HashSet<String> {
-    match commits.len() {
-        0 => {
-            let output = Command::new("git")
-                .arg("-C")
-                .arg(repo.as_ref())
-                .arg("diff")
-                .arg("--name-status")
-                .output();
-            let bytes = output.unwrap().stdout;
-            let changes = str::from_utf8(&bytes).unwrap();
-            commit::parse_changes(&changes)
-        }
-        _ => commits
-            .iter()
-            .map(|raw_commit| commit::find_changes(raw_commit, repo.as_ref()))
-            .fold(HashSet::new(), |acc, changes| {
-                acc.union(&changes).map(|c| c.to_owned()).collect()
-            })
-            .into_iter()
-            .collect(),
-    }
 }
 
 #[test]
