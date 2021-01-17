@@ -64,7 +64,7 @@ impl Gsync {
         }
     }
 
-    pub fn start(&self) {
+    pub fn start(&self) -> bool {
         let file2sync = self.find_changes();
         let mut matched = Vec::new();
         let mut not_matched = Vec::new();
@@ -111,18 +111,17 @@ impl Gsync {
         match decision.as_str().trim() {
             "y" | "Y" => choices = matched.iter().enumerate().map(|m| m.0).collect(),
             "n" | "N" => {
-                println!("Update cancelled");
-                return;
+                println!("Update cancelled.");
+                return false;
             }
             decision => {
                 let result: Result<Vec<usize>, _> =
                     decision.split(" ").map(|d| d.parse()).collect();
-                println!("{:?}", result);
                 if result.is_ok() {
                     choices = result.unwrap().iter().map(|c| c - 1).collect();
                 } else {
-                    println!("Invalid line numbers");
-                    return;
+                    println!("Invalid line numbers!");
+                    return false;
                 }
             }
         }
@@ -132,8 +131,8 @@ impl Gsync {
         let ssh: ssh2::Session;
         match self.destination.connect() {
             Err(_) => {
-                eprintln!("Error while connecting remote machine");
-                return;
+                eprintln!("Failed to connect remote machine!");
+                return false;
             }
             Ok(session) => ssh = session,
         };
@@ -156,6 +155,7 @@ impl Gsync {
                 size = file.read(&mut buffer).unwrap();
             }
         }
+        true
     }
 }
 

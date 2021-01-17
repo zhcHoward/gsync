@@ -1,5 +1,5 @@
 use crate::error::{ErrorKind, GsyncError};
-use log::error;
+use log::debug;
 use regex::Regex;
 use ssh2::Session;
 use std::env;
@@ -57,7 +57,7 @@ impl Destination {
             return Ok(session);
         };
 
-        println!("userauth_agent failed: {:?}", result);
+        debug!("userauth_agent failed: {:?}", result);
         let result = session.userauth_pubkey_file(
             self.username.as_str(),
             Some(self.public_key_file.as_path()),
@@ -68,13 +68,13 @@ impl Destination {
             return Ok(session);
         };
 
-        println!("userauth pubkey file failed: {:?}", result);
+        debug!("userauth pubkey file failed: {:?}", result);
         let message = format!("{}@{}'s password: ", self.username, self.host);
         let pass = rpassword::read_password_from_tty(Some(message.as_str())).unwrap();
         match session.userauth_password(self.username.as_str(), pass.as_str()) {
             Ok(_) => Ok(session),
             Err(e) => {
-                println!("userauth password failed: {:?}", e);
+                eprintln!("{}", e.message());
                 Err(io::Error::new(io::ErrorKind::Other, "Invalid password"))
             }
         }

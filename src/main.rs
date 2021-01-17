@@ -28,19 +28,22 @@ pub struct Opt {
 fn main() {
     let opts = Opt::from_args();
     let log_level = match opts.verbose {
+        0 => LevelFilter::Error, // the default
         1 => LevelFilter::Info,
         2 => LevelFilter::Debug,
-        3 => LevelFilter::Trace,
+        // 3 => LevelFilter::Trace,
         _ => LevelFilter::Off,
     };
     logger::init(log_level);
-    debug!("Command line options: {:?}", opts);
+    debug!("Cmdline options: {:?}", opts);
 
     match gsync::Gsync::from_options(opts) {
         Err(_) => exit(1),
         Ok(sync) => {
-            sync.start();
-            println!("Done!");
+            let success = sync.start();
+            if success {
+                println!("Done!");
+            }
         }
     }
 }
