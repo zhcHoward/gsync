@@ -1,4 +1,5 @@
 use crate::error::{ErrorKind, GsyncError};
+use log::error;
 use regex::Regex;
 use ssh2::Session;
 use std::env;
@@ -31,7 +32,7 @@ impl Destination {
         match pattern.captures(destination.as_ref()) {
             None => {
                 eprintln!("Failed to parse destination {}", destination.as_ref());
-                Err(GsyncError::Custom(ErrorKind::DestinationInvalid))
+                Err(ErrorKind::DestinationInvalid.error())
             }
             Some(caps) => {
                 let username = match caps.name("username") {

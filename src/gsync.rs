@@ -5,6 +5,7 @@ use crate::{
     error::{ErrorKind, GsyncError},
     Opt,
 };
+use log::error;
 use std::collections::HashSet;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -25,12 +26,11 @@ pub struct Gsync {
 
 impl Gsync {
     pub fn from_options(opts: Opt) -> Result<Self, GsyncError> {
-        let valid = validate_source(&opts.source)?;
-        if !valid {
+        if !validate_source(&opts.source) {
             return Err(ErrorKind::SourceNotExist.error());
         }
-        let destination = Destination::parse_destination(&opts.destination)?;
-        let config = Config::parse_config(&opts.config)?;
+        let destination = Destination::parse_destination(opts.destination)?;
+        let config = Config::parse_config(opts.config)?;
         let commits = opts.commits;
         Ok(Gsync {
             source: opts.source,
@@ -159,33 +159,19 @@ impl Gsync {
     }
 }
 
-fn validate_source<P: AsRef<Path>>(source: P) -> io::Result<bool> {
+fn validate_source<P: AsRef<Path>>(source: P) -> bool {
     if !source.as_ref().exists() {
-        eprintln!(
+        error!(
             "Source {} does not exists",
             source.as_ref().to_string_lossy()
         );
-        return Ok(false);
+        return false;
     }
 
-    match is_git_repo(&source) {
-        Err(e) => {
-            eprintln!("Error while validating source: {:?}", e);
-            Err(e)
-        }
-        Ok(ret) => {
-            if !ret {
-                eprintln!(
-                    "{} is not a git repository",
-                    source.as_ref().to_string_lossy()
-                );
-            }
-            Ok(ret)
-        }
-    }
+    is_git_repo(source.as_ref())
 }
 
-fn is_git_repo<P: AsRef<Path>>(path: P) -> io::Result<bool> {
+fn is_git_repo<P: AsRef<Path>>(path: P) -> bool {
     Command::new("git")
         .arg("-C")
         .arg(path.as_ref())
@@ -193,11 +179,12 @@ fn is_git_repo<P: AsRef<Path>>(path: P) -> io::Result<bool> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .map(|status| status.success())
+        .unwrap()
+        .success()
 }
 
 #[test]
 fn test_is_git_repo() {
-    assert_eq!(is_git_repo(".").unwrap(), true);
-    assert_eq!(is_git_repo("/").unwrap(), false);
+    assert_eq!(is_git_repo("."), true);
+    assert_eq!(is_git_repo("/"), false);
 }
