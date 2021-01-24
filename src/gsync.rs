@@ -5,6 +5,7 @@ use crate::{
     error::{ErrorKind, GsyncError},
     Opt,
 };
+use indicatif::ProgressBar;
 use log::error;
 use std::collections::HashSet;
 use std::fs;
@@ -137,6 +138,7 @@ impl Gsync {
             Ok(session) => ssh = session,
         };
 
+        let bar = ProgressBar::new(choices.len() as u64);
         for choice in choices {
             let (src, dst) = &matched[choice];
             let mut file = fs::File::open(src).unwrap();
@@ -154,7 +156,9 @@ impl Gsync {
                 remote.write(&buffer[..size]).unwrap();
                 size = file.read(&mut buffer).unwrap();
             }
+            bar.inc(1);
         }
+        bar.finish();
         true
     }
 }

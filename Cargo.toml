@@ -16,3 +16,4 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 log = "0.4"
 log4rs = { version = "0.13", features = ["console_appender", "pattern_encoder"] }
+indicatif = "0.15.0"
