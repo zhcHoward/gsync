@@ -1,5 +1,4 @@
 use log::error;
-use std::char;
 use std::collections::HashSet;
 use std::io::{Error, ErrorKind};
 use std::path::Path;
@@ -95,7 +94,7 @@ pub fn parse_changes(raw_changes: &str) -> HashSet<String> {
     raw_changes
         .lines()
         .filter_map(|line| {
-            let l: Vec<_> = line.split(char::is_whitespace).collect();
+            let l: Vec<_> = line.split_whitespace().collect();
             match l[0] {
                 "D" => None,
                 _ => Some(l[1].to_owned()),

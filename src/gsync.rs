@@ -47,8 +47,8 @@ impl Gsync {
                 let output = Command::new("git")
                     .arg("-C")
                     .arg(&self.source)
-                    .arg("diff")
-                    .arg("--name-status")
+                    .arg("status")
+                    .arg("--short")
                     .output();
                 let bytes = output.unwrap().stdout;
                 let changes = str::from_utf8(&bytes).unwrap();
