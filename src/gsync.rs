@@ -89,6 +89,7 @@ impl Gsync {
 
         println!("Following files will be updated:");
         let offset = matched.len().to_string().len();
+        matched.sort_unstable_by(|a, b| a.cmp(b));
         for (idx, (source, dest)) in matched.iter().enumerate() {
             println!(
                 "{0:>3$}. {1} --> {2}",
