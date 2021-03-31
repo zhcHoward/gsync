@@ -7,9 +7,10 @@ use std::path::{Path, PathBuf};
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
-    #[serde(deserialize_with = "from_list")]
+    #[serde(deserialize_with = "to_dirmap")]
     pub dir_map: Vec<(Regex, PathBuf)>,
-    pub ignored: Vec<String>,
+    #[serde(deserialize_with = "to_ignored")]
+    pub ignored: Vec<Regex>,
 }
 
 impl Config {
@@ -31,7 +32,7 @@ impl Config {
     }
 }
 
-fn from_list<'de, D>(deserializer: D) -> Result<Vec<(Regex, PathBuf)>, D::Error>
+fn to_dirmap<'de, D>(deserializer: D) -> Result<Vec<(Regex, PathBuf)>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -42,6 +43,14 @@ where
         .collect())
 }
 
+fn to_ignored<'de, D>(deserializer: D) -> Result<Vec<Regex>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let ignored: Vec<String> = Deserialize::deserialize(deserializer)?;
+    Ok(ignored.into_iter().map(|i| Regex::new(&i).unwrap()).collect())
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -50,7 +59,21 @@ mod test {
 
     impl PartialEq for Config {
         fn eq(&self, other: &Config) -> bool {
-            self.ignored == other.ignored
+            for (index, (regex1, path1)) in self.dir_map.iter().enumerate() {
+                let (regex2, path2) = &other.dir_map[index];
+                if regex1.as_str() != regex2.as_str() || path1 != path2 {
+                    return false;
+                }
+            }
+
+            for (index, reg1) in self.ignored.iter().enumerate() {
+                let reg2 = &other.ignored[index];
+                if reg1.as_str() != reg2.as_str() {
+                    return false;
+                }
+            }
+
+            return true;
         }
     }
 
@@ -72,7 +95,7 @@ mod test {
                 Regex::new("aaa/bbb").unwrap(),
                 PathBuf::from("/usr/local/bin/aaa/bbb"),
             )],
-            ignored: vec![String::from("ccc/ddd")],
+            ignored: vec![Regex::new("ccc/ddd").unwrap()],
         };
         assert_eq!(config, expected);
     }

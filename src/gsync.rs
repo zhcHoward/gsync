@@ -69,22 +69,38 @@ impl Gsync {
         let file2sync = self.find_changes();
         let mut matched = Vec::new();
         let mut not_matched = Vec::new();
-        let mut is_matched: bool;
-        for fpath in file2sync.iter() {
-            is_matched = false;
+        let mut ignored = Vec::new();
+        'outer: for fpath in file2sync.iter() {
+            for ignore in self.config.ignored.iter() {
+                if ignore.is_match(fpath) {
+                    ignored.push(fpath);
+                    continue 'outer;
+                }
+            }
+
             for (s, d) in self.config.dir_map.iter() {
                 if s.is_match(fpath) {
                     let full_source_path = self.source.join(fpath);
                     let relative_dest_path = Path::new(fpath).strip_prefix(s.as_str()).unwrap();
                     let full_dest_path = d.join(relative_dest_path);
                     matched.push((full_source_path, full_dest_path));
-                    is_matched = true;
-                    break;
+                    continue 'outer;
                 }
             }
-            if !is_matched {
-                not_matched.push(fpath);
+
+            not_matched.push(fpath);
+        }
+
+        if !ignored.is_empty() {
+            println!("Following files are ignored:");
+            for p in ignored {
+                println!("{:?}", p);
             }
+        }
+
+        if matched.is_empty() {
+            println!("No file will be updated, exit.");
+            return true;
         }
 
         println!("Following files will be updated:");
@@ -99,6 +115,7 @@ impl Gsync {
                 offset
             );
         }
+
         if !not_matched.is_empty() {
             println!("Following files has no configured remote dir:");
             for p in not_matched {
