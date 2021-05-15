@@ -26,7 +26,7 @@ impl Config {
                     "Config file {} does not exist",
                     path.as_ref().to_string_lossy()
                 );
-                Err(ErrorKind::ConfigNotExist.error())
+                Err(ErrorKind::ConfigNotExist.into())
             }
         }
     }
@@ -48,7 +48,10 @@ where
     D: Deserializer<'de>,
 {
     let ignored: Vec<String> = Deserialize::deserialize(deserializer)?;
-    Ok(ignored.into_iter().map(|i| Regex::new(&i).unwrap()).collect())
+    Ok(ignored
+        .into_iter()
+        .map(|i| Regex::new(&i).unwrap())
+        .collect())
 }
 
 #[cfg(test)]

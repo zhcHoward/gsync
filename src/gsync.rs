@@ -7,34 +7,37 @@ use crate::{
 };
 use indicatif::ProgressBar;
 use log::error;
-use std::collections::HashSet;
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::{
-    io,
+    collections::HashSet,
+    env,
+    ffi::OsStr,
+    fs, io,
     io::{Read, Write},
+    os::unix::{ffi::OsStrExt, fs::PermissionsExt},
+    path::{Path, PathBuf},
+    process::Command,
     str,
 };
 
 pub struct Gsync {
     config: Config,
-    source: PathBuf,
     destination: Destination,
     commits: Vec<String>,
 }
 
 impl Gsync {
     pub fn from_options(opts: Opt) -> Result<Self, GsyncError> {
-        if !validate_source(&opts.source) {
-            return Err(ErrorKind::SourceNotExist.error());
-        }
-        let destination = Destination::parse_destination(opts.destination)?;
+        validate_source(&opts.source)?;
+        let repo_root = get_repo_root(opts.source)?;
         let config = Config::parse_config(opts.config)?;
+        let destination = Destination::parse_destination(opts.destination)?;
         let commits = opts.commits;
+
+        // change current working directory for following steps so that
+        // 1. `-C` parameter can be omitted for the following git command
+        // 2. handling files' relative paths will be easier and clearer
+        env::set_current_dir(&repo_root)?;
         Ok(Gsync {
-            source: opts.source,
             destination,
             commits,
             config,
@@ -44,12 +47,7 @@ impl Gsync {
     fn find_changes(&self) -> HashSet<String> {
         match self.commits.len() {
             0 => {
-                let output = Command::new("git")
-                    .arg("-C")
-                    .arg(&self.source)
-                    .arg("status")
-                    .arg("--short")
-                    .output();
+                let output = Command::new("git").arg("status").arg("--short").output();
                 let bytes = output.unwrap().stdout;
                 let changes = str::from_utf8(&bytes).unwrap();
                 commit::parse_changes(&changes)
@@ -57,7 +55,7 @@ impl Gsync {
             _ => self
                 .commits
                 .iter()
-                .map(|raw_commit| commit::find_changes(raw_commit, &self.source))
+                .map(|raw_commit| commit::find_changes(raw_commit))
                 .fold(HashSet::new(), |mut acc, changes| {
                     acc.extend(changes);
                     acc
@@ -71,6 +69,7 @@ impl Gsync {
         let mut not_matched = Vec::new();
         let mut ignored = Vec::new();
         'outer: for fpath in file2sync.iter() {
+            println!("{:?}", fpath);
             for ignore in self.config.ignored.iter() {
                 if ignore.is_match(fpath) {
                     ignored.push(fpath);
@@ -80,10 +79,10 @@ impl Gsync {
 
             for (s, d) in self.config.dir_map.iter() {
                 if s.is_match(fpath) {
-                    let full_source_path = self.source.join(fpath);
-                    let relative_dest_path = Path::new(fpath).strip_prefix(s.as_str()).unwrap();
+                    let source_path = Path::new(fpath);
+                    let relative_dest_path = source_path.strip_prefix(s.as_str()).unwrap();
                     let full_dest_path = d.join(relative_dest_path);
-                    matched.push((full_source_path, full_dest_path));
+                    matched.push((source_path, full_dest_path));
                     continue 'outer;
                 }
             }
@@ -181,32 +180,43 @@ impl Gsync {
     }
 }
 
-fn validate_source<P: AsRef<Path>>(source: P) -> bool {
-    if !source.as_ref().exists() {
-        error!(
-            "Source {} does not exists",
-            source.as_ref().to_string_lossy()
-        );
-        return false;
+fn validate_source<P: AsRef<Path>>(source: P) -> Result<(), GsyncError> {
+    match source.as_ref().exists() {
+        true => Ok(()),
+        false => {
+            error!(
+                "Source {} does not exists",
+                source.as_ref().to_string_lossy()
+            );
+            Err(ErrorKind::SourceNotExist.into())
+        }
     }
-
-    is_git_repo(source.as_ref())
 }
 
-fn is_git_repo<P: AsRef<Path>>(path: P) -> bool {
-    Command::new("git")
+fn get_repo_root<P: AsRef<Path>>(path: P) -> Result<PathBuf, GsyncError> {
+    let output = Command::new("git")
         .arg("-C")
         .arg(path.as_ref())
         .arg("rev-parse")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .unwrap()
-        .success()
+        .arg("--show-toplevel")
+        .output()
+        .unwrap();
+
+    let path_len = output.stdout.len();
+    if path_len == 0 {
+        return Err(ErrorKind::SourceNotGitRepo.into());
+    } else {
+        let bytes = &output.stdout[..path_len - 1]; // remove trailing b'\n'
+        return Ok(PathBuf::from(OsStr::from_bytes(bytes)));
+    }
 }
 
 #[test]
-fn test_is_git_repo() {
-    assert_eq!(is_git_repo("."), true);
-    assert_eq!(is_git_repo("/"), false);
+fn test_get_root_repo() {
+    let result = get_repo_root(".");
+    assert_eq!(result.is_ok(), true);
+    assert_eq!(result.unwrap(), PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+
+    let result = get_repo_root("/");
+    assert_eq!(result.is_err(), true);
 }

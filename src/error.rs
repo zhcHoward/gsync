@@ -64,6 +64,7 @@ pub enum ErrorKind {
     SourceNotExist,
     DestinationInvalid,
     ConfigNotExist,
+    SourceNotGitRepo,
 }
 
 impl ErrorKind {
@@ -74,10 +75,7 @@ impl ErrorKind {
                 "The format of destination is invalid, cannot parse it"
             }
             ErrorKind::ConfigNotExist => "Config file does not exist",
+            ErrorKind::SourceNotGitRepo => "Source is not a git repository",
         }
-    }
-
-    pub fn error(self) -> GsyncError {
-        GsyncError::custom(self)
     }
 }

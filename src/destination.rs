@@ -32,7 +32,7 @@ impl Destination {
         match pattern.captures(destination.as_ref()) {
             None => {
                 eprintln!("Failed to parse destination {}", destination.as_ref());
-                Err(ErrorKind::DestinationInvalid.error())
+                Err(ErrorKind::DestinationInvalid.into())
             }
             Some(caps) => {
                 let username = match caps.name("username") {

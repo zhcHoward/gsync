@@ -1,11 +1,10 @@
 use log::error;
 use std::collections::HashSet;
 use std::io::{Error, ErrorKind};
-use std::path::Path;
 use std::process::Command;
 use std::str;
 
-pub fn parse_commit<'a, P: AsRef<Path>>(raw_commit: &'a str, repo: P) -> Vec<&'a str> {
+pub fn parse_commit<'a>(raw_commit: &'a str) -> Vec<&'a str> {
     let commits: Vec<&str> = raw_commit.split("..").collect();
     match commits.len() {
         1 => vec![raw_commit],
@@ -14,7 +13,7 @@ pub fn parse_commit<'a, P: AsRef<Path>>(raw_commit: &'a str, repo: P) -> Vec<&'a
                 return vec![];
             }
 
-            let (c1, c2) = sort_commits(commits[0], commits[1], repo);
+            let (c1, c2) = sort_commits(commits[0], commits[1]);
             vec![c1, c2]
         }
         _ => {
@@ -24,10 +23,8 @@ pub fn parse_commit<'a, P: AsRef<Path>>(raw_commit: &'a str, repo: P) -> Vec<&'a
     }
 }
 
-pub fn sort_commits<'a, P: AsRef<Path>>(c1: &'a str, c2: &'a str, repo: P) -> (&'a str, &'a str) {
+pub fn sort_commits<'a>(c1: &'a str, c2: &'a str) -> (&'a str, &'a str) {
     match Command::new("git")
-        .arg("-C")
-        .arg(repo.as_ref())
         .arg("merge-base")
         .arg("--is-ancestor")
         .arg(c1)
@@ -45,20 +42,16 @@ pub fn sort_commits<'a, P: AsRef<Path>>(c1: &'a str, c2: &'a str, repo: P) -> (&
     }
 }
 
-pub fn find_changes<P: AsRef<Path>>(raw_commit: &str, repo: P) -> HashSet<String> {
-    let commits = parse_commit(raw_commit, &repo);
+pub fn find_changes(raw_commit: &str) -> HashSet<String> {
+    let commits = parse_commit(raw_commit);
     let output = match commits.len() {
         1 => Command::new("git")
-            .arg("-C")
-            .arg(repo.as_ref())
             .arg("diff")
             .arg("--name-status")
             .arg(format!("{}~", commits[0]))
             .arg(commits[0])
             .output(),
         2 => Command::new("git")
-            .arg("-C")
-            .arg(repo.as_ref())
             .arg("diff")
             .arg("--name-status")
             .arg(commits[0])
@@ -71,22 +64,20 @@ pub fn find_changes<P: AsRef<Path>>(raw_commit: &str, repo: P) -> HashSet<String
             eprintln!("Error while find changes between commits: {:?}", e);
             HashSet::new()
         }
-        Ok(output) => {
-            match output.status.success() {
-                true => {
-                    let changes = str::from_utf8(&output.stdout).unwrap();
-                    parse_changes(&changes)
-                }
-                false => {
-                    eprintln!(
-                        "git show failed, stdout:\n{}stderr:\n{}",
-                        str::from_utf8(&output.stdout).unwrap(),
-                        str::from_utf8(&output.stderr).unwrap(),
-                    );
-                    HashSet::new()
-                }
+        Ok(output) => match output.status.success() {
+            true => {
+                let changes = str::from_utf8(&output.stdout).unwrap();
+                parse_changes(&changes)
             }
-        }
+            false => {
+                eprintln!(
+                    "git show failed, stdout:\n{}stderr:\n{}",
+                    str::from_utf8(&output.stdout).unwrap(),
+                    str::from_utf8(&output.stderr).unwrap(),
+                );
+                HashSet::new()
+            }
+        },
     }
 }
 
@@ -102,4 +93,3 @@ pub fn parse_changes(raw_changes: &str) -> HashSet<String> {
         })
         .collect()
 }
-

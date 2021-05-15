@@ -15,7 +15,7 @@ mod logger;
 pub struct Opt {
     #[structopt(short, long, required = true)]
     config: PathBuf,
-    #[structopt(short, long, required = true)]
+    #[structopt(short, long, default_value = ".", required = false)]
     source: PathBuf,
     #[structopt(short, long, required = true)]
     destination: String,
@@ -38,7 +38,10 @@ fn main() {
     debug!("Cmdline options: {:?}", opts);
 
     match gsync::Gsync::from_options(opts) {
-        Err(_) => exit(1),
+        Err(err) => {
+            eprintln!("{:?}", err);
+            exit(1);
+        }
         Ok(sync) => {
             let success = sync.start();
             if success {
