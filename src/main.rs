@@ -39,7 +39,7 @@ fn main() {
 
     match gsync::Gsync::from_options(opts) {
         Err(err) => {
-            eprintln!("{:?}", err);
+            eprintln!("{}", err);
             exit(1);
         }
         Ok(sync) => {

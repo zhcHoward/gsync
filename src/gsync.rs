@@ -69,7 +69,6 @@ impl Gsync {
         let mut not_matched = Vec::new();
         let mut ignored = Vec::new();
         'outer: for fpath in file2sync.iter() {
-            println!("{:?}", fpath);
             for ignore in self.config.ignored.iter() {
                 if ignore.is_match(fpath) {
                     ignored.push(fpath);
