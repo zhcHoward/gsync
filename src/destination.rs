@@ -5,26 +5,18 @@ use ssh2::Session;
 use std::env;
 use std::io;
 use std::net::TcpStream;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+const PRI_KEY_FILES: [&'static str; 4] = ["id_ed25519", "id_rsa", "id_ecdsa", "id_dsa"];
 
 pub struct Destination {
     username: String,
     host: String,
-    private_key_file: PathBuf,
-    public_key_file: PathBuf,
 }
 
 impl Destination {
     pub fn new(username: String, host: String) -> Self {
-        let home = env::var("HOME").unwrap();
-        let private_key_file = Path::new(&home).join(".ssh/id_rsa");
-        let public_key_file = Path::new(&home).join(".ssh/id_rsa.pub");
-        return Destination {
-            username,
-            host,
-            private_key_file,
-            public_key_file,
-        };
+        Destination { username, host }
     }
 
     pub fn parse_destination<S: AsRef<str>>(destination: S) -> Result<Self, GsyncError> {
@@ -58,15 +50,26 @@ impl Destination {
         };
 
         debug!("userauth_agent failed: {:?}", result);
-        let result = session.userauth_pubkey_file(
-            self.username.as_str(),
-            Some(self.public_key_file.as_path()),
-            self.private_key_file.as_path(),
-            None,
-        );
-        if let Ok(_) = result {
-            return Ok(session);
-        };
+        let home = env::var("HOME").unwrap();
+        for fname in PRI_KEY_FILES.iter() {
+            let private_key_file = Path::new(&home).join(".ssh").join(fname);
+            if !private_key_file.exists() {
+                continue;
+            }
+            let public_key_file = Path::new(&home).join(".ssh").join(format!("{}.pub", fname));
+            if !public_key_file.exists() {
+                continue;
+            }
+            let result = session.userauth_pubkey_file(
+                self.username.as_str(),
+                Some(public_key_file.as_path()),
+                private_key_file.as_path(),
+                None,
+            );
+            if let Ok(_) = result {
+                return Ok(session);
+            };
+        }
 
         debug!("userauth pubkey file failed: {:?}", result);
         let message = format!("{}@{}'s password: ", self.username, self.host);
