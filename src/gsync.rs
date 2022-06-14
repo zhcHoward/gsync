@@ -97,6 +97,12 @@ impl Gsync {
         }
 
         if matched.is_empty() {
+            if !not_matched.is_empty() {
+                println!("Following files has no configured remote dir:");
+                for p in not_matched {
+                    println!("{}", p);
+                }
+            }
             println!("No file will be updated, exit.");
             return true;
         }
@@ -117,7 +123,7 @@ impl Gsync {
         if !not_matched.is_empty() {
             println!("Following files has no configured remote dir:");
             for p in not_matched {
-                println!("{:?}", p);
+                println!("{}", p);
             }
         }
 
