@@ -85,10 +85,12 @@ pub fn parse_changes(raw_changes: &str) -> HashSet<String> {
     raw_changes
         .lines()
         .filter_map(|line| {
-            let l: Vec<_> = line.split_whitespace().collect();
-            match l[0] {
+            let parts: Vec<_> = line.split_whitespace().collect();
+            match parts[0] {
                 "D" => None,
-                _ => Some(l[1].to_owned()),
+                "R100" => None, // only rename files, no content change, ignore
+                s if s.starts_with('R') => Some(parts[2].to_owned()), // contains content change, need to sync
+                _ => Some(parts[1].to_owned()),
             }
         })
         .collect()
